@@ -15,6 +15,7 @@ const STORAGE_KEY_PREFIX_CONFIG = 'student-data:class-config:'
 const STORAGE_KEY_PREFIX_ROSTER = 'student-data:roster:'
 const STORAGE_KEY_PREFIX_SEATING = 'student-data:seating:'
 const STORAGE_KEY_PREFIX_DISABLED = 'student-data:disabled-seats:'
+const STORAGE_KEY_PREFIX_CALLED = 'student-data:called-on:'
 
 export function getClassConfig(classId: string): ClassConfig {
   const key = STORAGE_KEY_PREFIX_CONFIG + classId
@@ -127,6 +128,23 @@ export function getDisabledSeats(classId: string): number[] {
 export function saveDisabledSeats(classId: string, disabledSeatIndexes: number[]): void {
   const key = STORAGE_KEY_PREFIX_DISABLED + classId
   localStorage.setItem(key, JSON.stringify(disabledSeatIndexes))
+}
+
+export function getCalledOn(classId: string): string[] {
+  const key = STORAGE_KEY_PREFIX_CALLED + classId
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+export function saveCalledOn(classId: string, calledStudentIds: string[]): void {
+  const key = STORAGE_KEY_PREFIX_CALLED + classId
+  localStorage.setItem(key, JSON.stringify(calledStudentIds))
 }
 
 

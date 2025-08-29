@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { getClassConfig, saveClassConfig, getRoster, saveRoster, getSeating, saveSeating, getDisabledSeats, saveDisabledSeats, type Student } from '../lib/storage'
+import { getClassConfig, saveClassConfig, getRoster, saveRoster, getSeating, saveSeating, getDisabledSeats, saveDisabledSeats, getCalledOn, saveCalledOn, type Student } from '../lib/storage'
 
 function NumberInput({ label, value, onChange, min = 1, max = 20 }: { label: string; value: number; onChange: (v: number) => void; min?: number; max?: number }) {
   return (
@@ -115,7 +115,7 @@ function DraggableStudent({ student }: { student: Student }) {
   )
 }
 
-function SeatCell({ id, student, disabled, onDropStudent, onToggleDisabled }: { id: number; student?: Student; disabled?: boolean; onDropStudent: (studentId: string) => void; onToggleDisabled: () => void }) {
+function SeatCell({ id, student, disabled, isCalled, onDropStudent, onToggleDisabled, onToggleCalled }: { id: number; student?: Student; disabled?: boolean; isCalled?: boolean; onDropStudent: (studentId: string) => void; onToggleDisabled: () => void; onToggleCalled: () => void }) {
   return (
     <div
       onClick={() => {
@@ -129,22 +129,23 @@ function SeatCell({ id, student, disabled, onDropStudent, onToggleDisabled }: { 
         const studentId = e.dataTransfer.getData('text/plain')
         if (studentId) onDropStudent(studentId)
       }}
-      style={{ position: 'relative', border: disabled ? '1px solid #555' : student ? '2px solid #374151' : '1px dashed #777', borderRadius: 6, background: disabled ? '#555' : student ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: !student ? 'pointer' : 'default' }}
+      style={{ position: 'relative', border: disabled ? '1px solid #555' : student ? '2px solid #374151' : '1px dashed #777', borderRadius: 6, background: disabled ? '#555' : student ? (isCalled ? 'rgba(34,197,94,0.25)' : 'rgba(59,130,246,0.08)') : 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: !student ? 'pointer' : 'default' }}
     >
-      {student ? <StudentCard student={student} /> : <span style={{ color: disabled ? '#ddd' : '#777', fontSize: 12 }}>{disabled ? 'No seat' : 'Empty'}</span>}
+      {student ? <StudentCard student={student} onToggleCalled={onToggleCalled} isCalled={!!isCalled} /> : <span style={{ color: disabled ? '#ddd' : '#777', fontSize: 12 }}>{disabled ? 'No seat' : 'Empty'}</span>}
     </div>
   )
 }
 
-function StudentCard({ student }: { student: Student }) {
+function StudentCard({ student, isCalled, onToggleCalled }: { student: Student; isCalled?: boolean; onToggleCalled: () => void }) {
   return (
     <div
       draggable
       onDragStart={(e) => e.dataTransfer.setData('text/plain', student.id)}
-      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: 6 }}
+      onClick={(e) => { e.stopPropagation(); onToggleCalled() }}
+      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: 6, userSelect: 'none' }}
     >
       <Avatar name={student.name} photoUrl={student.photoUrl} size={48} />
-      <span style={{ fontSize: 12, textAlign: 'center', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{student.name}</span>
+      <span style={{ fontSize: 12, textAlign: 'center', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: isCalled ? 700 : 500 }}>{student.name}</span>
     </div>
   )
 }
@@ -173,6 +174,7 @@ export default function ClassSeating() {
   const [seating, setSeating] = useState<Record<number, string>>({})
   const [editingRoster, setEditingRoster] = useState(false)
   const [disabledSeats, setDisabledSeats] = useState<number[]>([])
+  const [calledOn, setCalledOn] = useState<string[]>([])
 
   useEffect(() => {
     if (!classId) return
@@ -182,6 +184,7 @@ export default function ClassSeating() {
     setRoster(getRoster(classId))
     setSeating(getSeating(classId))
     setDisabledSeats(getDisabledSeats(classId))
+    setCalledOn(getCalledOn(classId))
   }, [classId])
 
   // Save occurs immediately in onChange handlers to avoid overwriting loaded values on mount
@@ -242,6 +245,29 @@ export default function ClassSeating() {
     saveSeating(classId, {})
   }
 
+  function toggleCalled(studentId: string) {
+    if (!classId) return
+    const next = calledOn.includes(studentId) ? calledOn.filter((id) => id !== studentId) : [...calledOn, studentId]
+    setCalledOn(next)
+    saveCalledOn(classId, next)
+  }
+
+  function resetCalled() {
+    if (!classId) return
+    setCalledOn([])
+    saveCalledOn(classId, [])
+  }
+
+  function pickRandomStudent() {
+    const seatedStudentIds = new Set(Object.values(seating))
+    const candidates = roster.map((s) => s.id).filter((id) => seatedStudentIds.has(id) && !calledOn.includes(id))
+    if (candidates.length === 0) return
+    const choice = candidates[Math.floor(Math.random() * candidates.length)]
+    const next = [...calledOn, choice]
+    setCalledOn(next)
+    if (classId) saveCalledOn(classId, next)
+  }
+
   function handleRowsChange(v: number) {
     setRows(v)
     if (classId) saveClassConfig(classId, { rows: v, cols })
@@ -264,6 +290,8 @@ export default function ClassSeating() {
           <NumberInput label="Cols" value={cols} onChange={handleColsChange} />
           <button onClick={() => setEditingRoster((v) => !v)}>{editingRoster ? 'Close roster editor' : 'Edit roster'}</button>
           <button onClick={clearSeating} title="Remove all assignments">Clear seating</button>
+          <button onClick={pickRandomStudent} title="Randomly select a seated, uncalled student">Pick random</button>
+          <button onClick={resetCalled} title="Allow all students to be called again">Reset called</button>
         </div>
       </header>
 
@@ -291,6 +319,7 @@ export default function ClassSeating() {
               id={i}
               disabled={disabledSeats.includes(i)}
               student={roster.find((s) => s.id === seating[i])}
+              isCalled={(() => { const sid = seating[i]; return !!sid && calledOn.includes(sid) })()}
               onDropStudent={(studentId) => assignStudentToSeat(studentId, i)}
               onToggleDisabled={() => {
                 if (!classId) return
@@ -306,6 +335,7 @@ export default function ClassSeating() {
                 }
                 saveDisabledSeats(classId, next)
               }}
+              onToggleCalled={() => { const sid = seating[i]; if (sid) toggleCalled(sid) }}
             />
           ))}
         </div>
